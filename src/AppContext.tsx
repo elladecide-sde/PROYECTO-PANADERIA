@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Ingredient, Product, Sale, Expense, User, PushNotification, PaymentGateway, UserRole } from './types';
+import { Ingredient, Product, Sale, Expense, User, PushNotification, PaymentGateway, UserRole, ProductBatch, BatchWithdrawalRequest, SupplyRequest } from './types';
 import {
   INITIAL_INGREDIENTS,
   INITIAL_PRODUCTS,
@@ -22,12 +22,16 @@ interface AppContextType {
   deviceMode: 'PC' | 'Tablet';
   darkMode: boolean;
   activeTab: string;
+  batches: ProductBatch[];
+  withdrawalRequests: BatchWithdrawalRequest[];
+  supplyRequests: SupplyRequest[];
   
   // State setter wraps
   setActiveUserRole: (role: UserRole) => void;
   setDeviceMode: (mode: 'PC' | 'Tablet') => void;
   setDarkMode: (dark: boolean) => void;
   setActiveTab: (tab: string) => void;
+  setBatches: React.Dispatch<React.SetStateAction<ProductBatch[]>>;
   
   // Actions
   addSale: (items: { productId: string; quantity: number }[], paymentMethod: Sale['paymentMethod'], customDoc?: string, customName?: string, simulateFail?: boolean) => { success: boolean; invoice?: Sale; error?: string };
@@ -42,6 +46,17 @@ interface AppContextType {
   markNotificationAsRead: (id: string) => void;
   clearNotifications: () => void;
   resetAllData: () => void;
+  
+  // Batch Actions
+  addBatch: (batch: Omit<ProductBatch, 'id' | 'status'>) => void;
+  requestBatchWithdrawal: (batchId: string, quantity: number, reason: string) => void;
+  approveWithdrawalRequest: (requestId: string, adminMemo: string) => void;
+  rejectWithdrawalRequest: (requestId: string, adminMemo: string) => void;
+
+  // Supply Actions
+  requestSupply: (type: 'ingredient' | 'product', itemId: string, quantity: number, reason: string) => void;
+  approveSupplyRequest: (requestId: string, adminMemo: string) => void;
+  rejectSupplyRequest: (requestId: string, adminMemo: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -91,6 +106,145 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : PAYMENT_GATEWAYS;
   });
 
+  const [batches, setBatches] = useState<ProductBatch[]>(() => {
+    const saved = localStorage.getItem('pan_erp_batches');
+    if (saved) return JSON.parse(saved);
+    
+    const initialBatches: ProductBatch[] = [];
+    
+    INITIAL_PRODUCTS.forEach((prod, index) => {
+      const durability = prod.durabilityDays || 3;
+      const totalStock = prod.stock || 50;
+      
+      const freshQty = Math.floor(totalStock * 0.6);
+      const nearQty = Math.floor(totalStock * 0.3);
+      const expiredQty = totalStock - freshQty - nearQty;
+      
+      if (freshQty > 0) {
+        const freshElab = new Date();
+        const elabString = freshElab.toISOString().split('T')[0];
+        const expString = new Date(freshElab.getTime() + durability * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        initialBatches.push({
+          id: `batch_${prod.id}_fresh_${index}`,
+          productId: prod.id,
+          batchNumber: `L-${prod.name.slice(0, 3).toUpperCase()}-F-${String(index + 10).padStart(2, '0')}`,
+          quantity: freshQty,
+          stock: freshQty,
+          elaborationDate: elabString,
+          expiryDate: expString,
+          status: 'active',
+          withdrawalMode: 'manual'
+        });
+      }
+      
+      if (nearQty > 0) {
+        const nearElab = new Date();
+        nearElab.setDate(nearElab.getDate() - (durability - 1));
+        const elabString = nearElab.toISOString().split('T')[0];
+        const expString = new Date(nearElab.getTime() + durability * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        initialBatches.push({
+          id: `batch_${prod.id}_near_${index}`,
+          productId: prod.id,
+          batchNumber: `L-${prod.name.slice(0, 3).toUpperCase()}-N-${String(index + 20).padStart(2, '0')}`,
+          quantity: nearQty,
+          stock: nearQty,
+          elaborationDate: elabString,
+          expiryDate: expString,
+          status: 'active',
+          withdrawalMode: 'manual'
+        });
+      }
+      
+      if (expiredQty > 0) {
+        const expElab = new Date();
+        expElab.setDate(expElab.getDate() - (durability + 1));
+        const elabString = expElab.toISOString().split('T')[0];
+        const expString = new Date(expElab.getTime() + durability * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        initialBatches.push({
+          id: `batch_${prod.id}_expired_${index}`,
+          productId: prod.id,
+          batchNumber: `L-${prod.name.slice(0, 3).toUpperCase()}-E-${String(index + 30).padStart(2, '0')}`,
+          quantity: expiredQty,
+          stock: expiredQty,
+          elaborationDate: elabString,
+          expiryDate: expString,
+          status: 'active',
+          withdrawalMode: 'manual'
+        });
+      }
+    });
+    
+    return initialBatches;
+  });
+
+  const [withdrawalRequests, setWithdrawalRequests] = useState<BatchWithdrawalRequest[]>(() => {
+    const saved = localStorage.getItem('pan_erp_withdrawal_requests');
+    if (saved) return JSON.parse(saved);
+    
+    return [
+      {
+        id: 'req_1',
+        batchId: 'batch_prod_pan_flauta_expired_0',
+        productId: 'prod_pan_flauta',
+        productName: 'Pan Flauta (Baguette)',
+        batchNumber: 'L-PAN-E-10',
+        quantity: 12,
+        reason: 'Lote caducó hace 2 días, retirar rancio de góndola',
+        requestedBy: 'Damián (Panadero)',
+        status: 'pending',
+        date: new Date(Date.now() - 3600000).toISOString()
+      },
+      {
+        id: 'req_2',
+        batchId: 'batch_prod_facturas_surtidas_expired_2',
+        productId: 'prod_facturas_surtidas',
+        productName: 'Facturas Surtidas',
+        batchNumber: 'L-FAC-E-12',
+        quantity: 5,
+        reason: 'Medialunas secas no aptas para venta',
+        requestedBy: 'Sofía (Cajero/a)',
+        status: 'approved',
+        date: new Date(Date.now() - 7200000 * 2).toISOString(),
+        adminMemo: 'Confirmado retiro, de baja mermas.'
+      }
+    ];
+  });
+
+  const [supplyRequests, setSupplyRequests] = useState<SupplyRequest[]>(() => {
+    const saved = localStorage.getItem('pan_erp_supply_requests');
+    if (saved) return JSON.parse(saved);
+    
+    return [
+      {
+        id: 'sup_req_1',
+        type: 'ingredient',
+        itemId: 'ing_harina',
+        itemName: 'Harina de Trigo 0000',
+        quantity: 50,
+        unit: 'kg',
+        reason: 'Reposición urgente para elaboración de pan del fin de semana.',
+        requestedBy: 'Laura (Panadero)',
+        status: 'pending',
+        date: new Date(Date.now() - 5400000).toISOString()
+      },
+      {
+        id: 'sup_req_2',
+        type: 'product',
+        itemId: 'prod_pan_flauta',
+        itemName: 'Pan Flauta (Baguette)',
+        quantity: 40,
+        unit: 'unidades',
+        reason: 'Lote fresco caliente listo para transferir a mostrador.',
+        requestedBy: 'Laura (Panadero)',
+        status: 'pending',
+        date: new Date(Date.now() - 1800000).toISOString()
+      }
+    ];
+  });
+
   const [activeUserId, setActiveUserId] = useState<string>(() => {
     return localStorage.getItem('pan_erp_active_user_id') || 'user_admin';
   });
@@ -113,6 +267,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem('pan_erp_products', JSON.stringify(products));
   }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem('pan_erp_batches', JSON.stringify(batches));
+  }, [batches]);
+
+  useEffect(() => {
+    localStorage.setItem('pan_erp_withdrawal_requests', JSON.stringify(withdrawalRequests));
+  }, [withdrawalRequests]);
+
+  useEffect(() => {
+    localStorage.setItem('pan_erp_supply_requests', JSON.stringify(supplyRequests));
+  }, [supplyRequests]);
+
+  // Automatic verification of automatic-mode expired batches
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayTime = new Date(todayStr + 'T00:00:00').getTime();
+    
+    const expiredAutoBatches = batches.filter(b => 
+      b.withdrawalMode === 'automatic' && 
+      b.status === 'active' && 
+      b.stock > 0 && 
+      new Date(b.expiryDate + 'T00:00:00').getTime() < todayTime
+    );
+    
+    if (expiredAutoBatches.length > 0) {
+      let updatedRequests = [...withdrawalRequests];
+      let addedAny = false;
+      
+      expiredAutoBatches.forEach(b => {
+        const exists = updatedRequests.some(r => r.batchId === b.id && r.status === 'pending');
+        if (!exists) {
+          const prodObj = products.find(p => p.id === b.productId);
+          const reqId = `req_auto_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+          
+          updatedRequests.unshift({
+            id: reqId,
+            batchId: b.id,
+            productId: b.productId,
+            productName: prodObj ? prodObj.name : 'Bakery Item',
+            batchNumber: b.batchNumber,
+            quantity: b.stock,
+            reason: 'Baja automática generada por fecha límite de caducidad.',
+            requestedBy: 'Chequeo Automatizado ERP',
+            status: 'pending',
+            date: new Date().toISOString()
+          });
+          
+          addedAny = true;
+          
+          addSystemNotification(
+            '⏳ Lote Expirado (Automático)',
+            `El lote ${b.batchNumber} de "${prodObj?.name || 'Pan'}" ha expirado. Solicitud enviada a administración.`,
+            'warning'
+          );
+        }
+      });
+      
+      if (addedAny) {
+        setWithdrawalRequests(updatedRequests);
+      }
+    }
+  }, [batches, products]);
 
   useEffect(() => {
     localStorage.setItem('pan_erp_sales', JSON.stringify(sales));
@@ -158,6 +375,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const found = users.find(u => u.role === role);
     if (found) {
       setActiveUserId(found.id);
+      if (role === 'cajero') {
+        setActiveTab('pos');
+      } else if (role === 'panadero') {
+        setActiveTab('inventory');
+      } else {
+        setActiveTab('dashboard');
+      }
     }
   };
 
@@ -387,6 +611,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       customerDoc: customDoc
     };
 
+    // Deduct available product batches using FIFO/FEFO
+    setBatches(prevBatches => {
+      const updatedBatches = [...prevBatches];
+      for (const item of cartItems) {
+        let qtyToDeduct = item.quantity;
+        const eligible = updatedBatches
+          .filter(b => b.productId === item.productId && b.status === 'active' && b.stock > 0)
+          .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+
+        for (const targetBatch of eligible) {
+          if (qtyToDeduct <= 0) break;
+          const batchIdx = updatedBatches.findIndex(b => b.id === targetBatch.id);
+          if (batchIdx !== -1) {
+            const b = updatedBatches[batchIdx];
+            const deduct = Math.min(b.stock, qtyToDeduct);
+            qtyToDeduct -= deduct;
+            const nextStock = b.stock - deduct;
+            updatedBatches[batchIdx] = {
+              ...b,
+              stock: nextStock,
+              status: nextStock === 0 ? 'sold_out' as const : b.status
+            };
+          }
+        }
+      }
+      return updatedBatches;
+    });
+
     setProducts(updatedProducts);
     setIngredients(updatedIngredients);
     setSales(prev => [newSaleInstance, ...prev]);
@@ -454,6 +706,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const prodId = `prod_${newProd.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
     const code = `77912345${Math.floor(10000 + Math.random() * 90000)}`;
     const productInstance: Product = {
+      elaborationDate: new Date().toISOString().split('T')[0],
+      durabilityDays: 2,
       ...newProd,
       id: prodId,
       code
@@ -523,6 +777,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('pan_erp_active_user_id');
     localStorage.removeItem('pan_erp_device_mode');
     localStorage.removeItem('pan_erp_dark_mode');
+    localStorage.removeItem('pan_erp_batches');
+    localStorage.removeItem('pan_erp_withdrawal_requests');
+    localStorage.removeItem('pan_erp_supply_requests');
 
     setIngredients(INITIAL_INGREDIENTS);
     setProducts(INITIAL_PRODUCTS);
@@ -535,9 +792,273 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDeviceMode('PC');
     setDarkMode(false);
     setActiveTab('dashboard');
+    setBatches([]);
+    setWithdrawalRequests([]);
+    setSupplyRequests([
+      {
+        id: 'sup_req_1',
+        type: 'ingredient',
+        itemId: 'ing_harina',
+        itemName: 'Harina de Trigo 0000',
+        quantity: 50,
+        unit: 'kg',
+        reason: 'Reposición urgente para elaboración de pan del fin de semana.',
+        requestedBy: 'Laura (Panadero)',
+        status: 'pending',
+        date: new Date(Date.now() - 5400000).toISOString()
+      },
+      {
+        id: 'sup_req_2',
+        type: 'product',
+        itemId: 'prod_pan_flauta',
+        itemName: 'Pan Flauta (Baguette)',
+        quantity: 40,
+        unit: 'unidades',
+        reason: 'Lote fresco caliente listo para transferir a mostrador.',
+        requestedBy: 'Laura (Panadero)',
+        status: 'pending',
+        date: new Date(Date.now() - 1800000).toISOString()
+      }
+    ]);
 
     addSystemNotification('⚙️ Sistema Reiniciado', 'La base de datos original ha sido restablecida en tiempo real.', 'success');
   };
+
+  const addBatch = (newBatch: Omit<ProductBatch, 'id' | 'status'>) => {
+    const generatedId = `batch_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const batchInstance: ProductBatch = {
+      ...newBatch,
+      id: generatedId,
+      status: 'active'
+    };
+    
+    setBatches(prev => [...prev, batchInstance]);
+    
+    setProducts(prevProducts =>
+      prevProducts.map(p => {
+        if (p.id === newBatch.productId) {
+          return { ...p, stock: p.stock + newBatch.quantity };
+        }
+        return p;
+      })
+    );
+    
+    const prodName = products.find(p => p.id === newBatch.productId)?.name || 'Producto';
+    addSystemNotification(
+      '📦 Nuevo Lote Registrado',
+      `Se registró el lote ${newBatch.batchNumber} de "${prodName}" con ${newBatch.quantity} unidades.`,
+      'success'
+    );
+  };
+
+  const requestBatchWithdrawal = (batchId: string, quantity: number, reason: string) => {
+    const batch = batches.find(b => b.id === batchId);
+    if (!batch) return;
+    
+    const prod = products.find(p => p.id === batch.productId);
+    const reqId = `req_${Date.now()}_${Math.floor(Math.random() * 105)}`;
+    
+    const request: BatchWithdrawalRequest = {
+      id: reqId,
+      batchId,
+      productId: batch.productId,
+      productName: prod ? prod.name : 'Artículo',
+      batchNumber: batch.batchNumber,
+      quantity,
+      reason,
+      requestedBy: `${activeUser.name} (${activeUser.role === 'admin' ? 'Administrador' : activeUser.role === 'cajero' ? 'Caja' : 'Panadero'})`,
+      status: 'pending',
+      date: new Date().toISOString()
+    };
+    
+    setWithdrawalRequests(prev => [request, ...prev]);
+    addSystemNotification(
+      '🔔 Solicitud de Baja Registrada',
+      `Se solicitó retirar ${quantity} u. del lote ${batch.batchNumber} de "${request.productName}".`,
+      'info'
+    );
+  };
+
+  const approveWithdrawalRequest = (requestId: string, adminMemo: string) => {
+    setWithdrawalRequests(prev =>
+      prev.map(r => {
+        if (r.id === requestId) {
+          if (r.status !== 'pending') return r;
+          
+          const req = { ...r, status: 'approved' as const, adminMemo };
+          
+          setBatches(currentBatches =>
+            currentBatches.map(b => {
+              if (b.id === req.batchId) {
+                const nextStock = Math.max(0, b.stock - req.quantity);
+                return {
+                  ...b,
+                  stock: nextStock,
+                  status: nextStock === 0 ? 'withdrawn' as const : b.status
+                };
+              }
+              return b;
+            })
+          );
+          
+          setProducts(currentProducts =>
+            currentProducts.map(p => {
+              if (p.id === req.productId) {
+                return { ...p, stock: Math.max(0, p.stock - req.quantity) };
+              }
+              return p;
+            })
+          );
+          
+          addSystemNotification(
+            '✅ Solicitud de Baja Aprobada',
+            `Se aprobó retirar del local ${req.quantity} u. de "${req.productName}". Detalle: ${adminMemo}`,
+            'success'
+          );
+          
+          return req;
+        }
+        return r;
+      })
+    );
+  };
+
+  const rejectWithdrawalRequest = (requestId: string, adminMemo: string) => {
+    setWithdrawRequests(prev =>
+      prev.map(r => {
+        if (r.id === requestId) {
+          if (r.status !== 'pending') return r;
+          
+          const req = { ...r, status: 'rejected' as const, adminMemo };
+          addSystemNotification(
+            '❌ Solicitud de Baja Rechazada',
+            `Se rechazó dar de baja el lote ${req.batchNumber} de "${req.productName}". Detalle: ${adminMemo}`,
+            'error'
+          );
+          return req;
+        }
+        return r;
+      })
+    );
+  };
+
+  const requestSupply = (type: 'ingredient' | 'product', itemId: string, quantity: number, reason: string) => {
+    let itemName = '';
+    let unit = '';
+    if (type === 'ingredient') {
+      const ing = ingredients.find(i => i.id === itemId);
+      itemName = ing ? ing.name : 'Materia Prima';
+      unit = ing ? ing.unit : 'kg';
+    } else {
+      const prod = products.find(p => p.id === itemId);
+      itemName = prod ? prod.name : 'Producto';
+      unit = 'unidades';
+    }
+    
+    const reqId = `sup_req_${Date.now()}_${Math.floor(Math.random() * 100)}`;
+    const request: SupplyRequest = {
+      id: reqId,
+      type,
+      itemId,
+      itemName,
+      quantity,
+      unit,
+      reason,
+      requestedBy: `${activeUser.name} (${activeUser.role === 'admin' ? 'Administración' : activeUser.role === 'cajero' ? 'Cajero' : 'Panadero'})`,
+      status: 'pending',
+      date: new Date().toISOString()
+    };
+    
+    setSupplyRequests(prev => [request, ...prev]);
+    addSystemNotification(
+      '🌾 Solicitud de Abastecimiento',
+      `Nueva solicitud para ${quantity} ${unit} de "${itemName}": ${reason}`,
+      'info'
+    );
+  };
+
+  const approveSupplyRequest = (requestId: string, adminMemo: string) => {
+    setSupplyRequests(prev =>
+      prev.map(r => {
+        if (r.id === requestId) {
+          if (r.status !== 'pending') return r;
+          
+          const req = { ...r, status: 'approved' as const, adminMemo };
+          
+          if (req.type === 'ingredient') {
+            setIngredients(currentIngredients =>
+              currentIngredients.map(ing => {
+                if (ing.id === req.itemId) {
+                  return { ...ing, stock: ing.stock + req.quantity };
+                }
+                return ing;
+              })
+            );
+          } else {
+            setProducts(currentProducts =>
+              currentProducts.map(p => {
+                if (p.id === req.itemId) {
+                  return { ...p, stock: p.stock + req.quantity };
+                }
+                return p;
+              })
+            );
+            
+            setBatches(prevBatches => {
+              const freshElab = new Date();
+              const elabString = freshElab.toISOString().split('T')[0];
+              const expString = new Date(freshElab.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+              
+              return [
+                {
+                  id: `batch_supply_${Date.now()}_${Math.floor(Math.random() * 100)}`,
+                  productId: req.itemId,
+                  batchNumber: `L-${req.itemName.slice(0, 3).toUpperCase()}-R-${Math.floor(100 + Math.random() * 900)}`,
+                  quantity: req.quantity,
+                  stock: req.quantity,
+                  elaborationDate: elabString,
+                  expiryDate: expString,
+                  status: 'active',
+                  withdrawalMode: 'manual'
+                },
+                ...prevBatches
+              ];
+            });
+          }
+          
+          addSystemNotification(
+            '✅ Abastecimiento Aprobado',
+            `Se autorizó reposición de ${req.quantity} ${req.unit} para "${req.itemName}". Detalle admin: ${adminMemo}`,
+            'success'
+          );
+          
+          return req;
+        }
+        return r;
+      })
+    );
+  };
+
+  const rejectSupplyRequest = (requestId: string, adminMemo: string) => {
+    setSupplyRequests(prev =>
+      prev.map(r => {
+        if (r.id === requestId) {
+          if (r.status !== 'pending') return r;
+          const req = { ...r, status: 'rejected' as const, adminMemo };
+          addSystemNotification(
+            '❌ Abastecimiento Desestimado',
+            `Se rechazó la solicitud para "${req.itemName}". Comentario: ${adminMemo}`,
+            'error'
+          );
+          return req;
+        }
+        return r;
+      })
+    );
+  };
+
+  // Alias for error proofing
+  const setWithdrawRequests = setWithdrawalRequests;
 
   return (
     <AppContext.Provider
@@ -553,10 +1074,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deviceMode,
         darkMode,
         activeTab,
+        batches,
+        withdrawalRequests,
+        supplyRequests,
         setActiveUserRole,
         setDeviceMode,
         setDarkMode,
         setActiveTab,
+        setBatches,
         addSale,
         addExpense,
         addIngredient,
@@ -568,7 +1093,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addSystemNotification,
         markNotificationAsRead,
         clearNotifications,
-        resetAllData
+        resetAllData,
+        addBatch,
+        requestBatchWithdrawal,
+        approveWithdrawalRequest,
+        rejectWithdrawalRequest,
+        requestSupply,
+        approveSupplyRequest,
+        rejectSupplyRequest
       }}
     >
       {children}

@@ -37,6 +37,13 @@ export const POSView: React.FC = () => {
   const [customerName, setCustomerName] = useState('');
   const [customerDoc, setCustomerDoc] = useState('');
   
+  // Selection Modal states
+  const [showSelectionModal, setShowSelectionModal] = useState(false);
+  const [modalSelectedCategory, setModalSelectedCategory] = useState<CategoryType | 'todos' | null>(null);
+  const [modalOpenedFromFloating, setModalOpenedFromFloating] = useState(false);
+  const [modalSortKey, setModalSortKey] = useState<'monto' | 'orden' | 'fecha_elaboracion' | null>(null);
+  const [modalSortOrder, setModalSortOrder] = useState<'asc' | 'desc'>('asc');
+
   // Simulation states
   const [isScanning, setIsScanning] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -44,6 +51,253 @@ export const POSView: React.FC = () => {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [simulateFailedPayment, setSimulateFailedPayment] = useState(false);
   const [processingStatusText, setProcessingStatusText] = useState('');
+
+  const categoriesList: { id: CategoryType | 'todos'; label: string; icon: string }[] = [
+    { id: 'todos', label: 'Todos', icon: '🍪' },
+    { id: 'panes', label: 'Panes', icon: '🥖' },
+    { id: 'facturas', label: 'Facturas', icon: '🥐' },
+    { id: 'pasteleria', label: 'Repostería', icon: '🍰' },
+    { id: 'salados', label: 'Salados', icon: '🥪' },
+    { id: 'bebidas', label: 'Bebidas', icon: '☕' }
+  ];
+
+  // Helper helper to calculate product expiry
+  const getExpiryStatus = (elaborationDate?: string, durabilityDays?: number) => {
+    if (!elaborationDate || !durabilityDays) return { status: 'unknown', text: 'N/A', daysRemaining: 999 };
+    const elaborDateObj = new Date(elaborationDate + 'T00:00:00');
+    const expiryDateObj = new Date(elaborDateObj.getTime());
+    expiryDateObj.setDate(expiryDateObj.getDate() + durabilityDays);
+    
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    
+    const diffTime = expiryDateObj.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) {
+      return { status: 'expired', text: `Vencido (hace ${Math.abs(diffDays)}d)`, daysRemaining: diffDays };
+    } else if (diffDays === 0) {
+      return { status: 'expires_today', text: 'Vence hoy ⚠️', daysRemaining: diffDays };
+    } else if (diffDays === 1) {
+      return { status: 'warning', text: 'Vence mañana ⏳', daysRemaining: diffDays };
+    } else {
+      return { status: 'ok', text: `${diffDays} días rest.`, daysRemaining: diffDays };
+    }
+  };
+
+  const getSortedModalProducts = () => {
+    let list = [...products];
+    
+    // filter by category in modal
+    if (modalSelectedCategory && modalSelectedCategory !== 'todos') {
+      list = list.filter(p => p.category === modalSelectedCategory);
+    }
+    
+    // apply sorting if key is active
+    if (modalSortKey) {
+      list.sort((a, b) => {
+        let valA: any = 0;
+        let valB: any = 0;
+        if (modalSortKey === 'monto') {
+          valA = a.price;
+          valB = b.price;
+        } else if (modalSortKey === 'orden') {
+          valA = a.name.toLowerCase();
+          valB = b.name.toLowerCase();
+        } else if (modalSortKey === 'fecha_elaboracion') {
+          valA = a.elaborationDate || '2026-06-01';
+          valB = b.elaborationDate || '2026-06-01';
+        }
+        
+        if (valA < valB) return modalSortOrder === 'asc' ? -1 : 1;
+        if (valA > valB) return modalSortOrder === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    
+    return list;
+  };
+
+  const renderProductList = (productsList: Product[]) => {
+    if (productsList.length === 0) {
+      return (
+        <div className="text-center py-12 text-gray-400 font-bold">
+          Ningún panificado coincide con el filtro de búsqueda.
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white dark:bg-zinc-900 border border-gray-150 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-xs animate-fade-in">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs whitespace-nowrap">
+            <thead className="bg-gray-50 dark:bg-zinc-950 text-[10px] uppercase font-bold text-gray-400 select-none">
+              <tr className="border-b border-gray-150 dark:border-zinc-800">
+                <th className="py-3 px-4">Panificado</th>
+                <th className="py-3 px-4 text-center">Stock / Caducidad</th>
+                <th className="py-3 px-3 text-right">Precio</th>
+                <th className="py-3 px-4 text-center">Acción / Cantidad</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-zinc-800/60 font-semibold text-gray-855 dark:text-zinc-200">
+              {productsList.map(prod => {
+                const isLowStock = prod.stock <= (prod.minStock || 5);
+                const exp = getExpiryStatus(prod.elaborationDate, prod.durabilityDays);
+                const cartItem = cart.find(item => item.product.id === prod.id);
+                const quantityInCart = cartItem ? cartItem.quantity : 0;
+
+                return (
+                  <tr
+                    key={prod.id}
+                    className={`hover:bg-amber-50/5 dark:hover:bg-amber-955/2 transition-colors ${
+                      quantityInCart > 0 
+                        ? 'bg-amber-50/10 dark:bg-amber-950/10' 
+                        : ''
+                    }`}
+                  >
+                    {/* Column 1: Panificado */}
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl shrink-0" role="img" aria-label={prod.name}>
+                          {prod.image}
+                        </span>
+                        <div>
+                          <p className="font-extrabold text-xs text-gray-855 dark:text-zinc-50 leading-tight">
+                            {prod.name}
+                          </p>
+                          <span className="inline-block mt-0.5 text-[8px] tracking-wide uppercase px-1.5 py-0.5 rounded font-black bg-amber-100/60 dark:bg-amber-950/20 text-amber-805 dark:text-amber-400 leading-none">
+                            {prod.category}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Column 2: Stock & Caducidad (Rojo/Amarillo/Verde) */}
+                    <td className="py-3 px-4 text-center">
+                      <div className="flex flex-col items-center justify-center gap-1 select-none">
+                        <span className={`inline-block text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                          isLowStock 
+                            ? 'bg-red-100 text-red-700 dark:bg-red-950/30' 
+                            : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/10'
+                        }`}>
+                          {prod.stock} u.
+                        </span>
+                        
+                        {prod.durabilityDays ? (
+                          <span className={`inline-flex items-center gap-1.5 text-[8.5px] px-1.5 py-0.5 rounded-sm font-black ${
+                            exp.daysRemaining < 0
+                              ? 'bg-red-500/10 text-red-650'
+                              : exp.daysRemaining <= 1
+                              ? 'bg-amber-500/10 text-amber-700'
+                              : 'bg-emerald-500/10 text-emerald-650'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              exp.daysRemaining < 0
+                                ? 'bg-red-500'
+                                : exp.daysRemaining <= 1
+                                ? 'bg-amber-500'
+                                : 'bg-emerald-500'
+                            }`} />
+                            {exp.daysRemaining < 0
+                              ? 'Caducado'
+                              : exp.daysRemaining <= 1
+                              ? 'Por Caducar'
+                              : 'Excelente'}
+                          </span>
+                        ) : (
+                          <span className="text-[8px] text-gray-400 font-bold uppercase px-1">Excelente</span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Column 3: Precio */}
+                    <td className="py-3 px-3 text-right">
+                      <span className="font-mono text-xs font-black text-amber-700 dark:text-amber-405">
+                        ${prod.price.toFixed(2)}
+                      </span>
+                    </td>
+
+                    {/* Column 4: Acciones / Cantidad */}
+                    <td className="py-3 px-4 text-center select-none">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {quantityInCart > 0 ? (
+                          <div className="flex items-center gap-1 bg-gray-100 dark:bg-zinc-800 p-0.5 rounded-xl border border-gray-200 dark:border-zinc-700">
+                            {/* Decrement Button */}
+                            <button
+                              id={`btn-modal-qty-dec-${prod.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                decreaseQuantity(prod.id);
+                                playBeep(600, 0.05);
+                              }}
+                              className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-zinc-400 cursor-pointer transition-colors active:scale-95"
+                              title="Restar 1 unidad"
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                            
+                            <span className="font-mono text-xs font-black text-gray-855 dark:text-zinc-100 px-2 min-w-[20px] text-center">
+                              {quantityInCart}
+                            </span>
+
+                            {/* Increment Button */}
+                            <button
+                              id={`btn-modal-qty-inc-${prod.id}`}
+                              disabled={quantityInCart >= prod.stock}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (quantityInCart < prod.stock) {
+                                  addToCart(prod);
+                                  playBeep(1105, 0.05);
+                                } else {
+                                  addSystemNotification('⚠️ Stock límite', `No se pueden agregar más unidades de ${prod.name}`, 'warning');
+                                }
+                              }}
+                              className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-zinc-400 disabled:opacity-50 cursor-pointer transition-colors active:scale-95"
+                              title="Sumar 1 unidad"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+
+                            {/* Delete Button */}
+                            <button
+                              id={`btn-modal-qty-del-${prod.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFromCart(prod.id);
+                                playBeep(500, 0.08);
+                              }}
+                              className="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-950/50 text-gray-450 hover:text-red-650 dark:text-zinc-500 dark:hover:text-red-400 cursor-pointer transition-colors ml-0.5"
+                              title="Quitar de la venta"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            id={`btn-modal-quick-add-${prod.id}`}
+                            disabled={prod.stock <= 0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addToCart(prod);
+                              playBeep(1105, 0.07);
+                            }}
+                            className="py-1 px-3.5 rounded-xl border border-amber-300 dark:border-amber-900 bg-amber-50 hover:bg-amber-100 dark:bg-amber-955/20 dark:hover:bg-amber-955/45 text-amber-805 dark:text-amber-400 text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                          >
+                            {prod.stock <= 0 ? 'Sin stock' : 'Agregar +'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
 
   // Audio Beep generator
   const playBeep = (freq = 880, duration = 0.08) => {
@@ -61,6 +315,18 @@ export const POSView: React.FC = () => {
       console.log('Audio disabled until user interacts with document.');
     }
   };
+
+  useEffect(() => {
+    const shouldOpen = localStorage.getItem('pan_erp_open_search_list');
+    if (shouldOpen === 'true') {
+      localStorage.removeItem('pan_erp_open_search_list');
+      setModalOpenedFromFloating(true);
+      setModalSelectedCategory('todos');
+      setSearchQuery('');
+      setShowSelectionModal(true);
+      playBeep(705, 0.05);
+    }
+  }, []);
 
   // Add item to POS cart
   const addToCart = (product: Product) => {
@@ -196,20 +462,11 @@ export const POSView: React.FC = () => {
     return matchesCategory && matchesSearch;
   });
 
-  const categoriesList: { id: CategoryType | 'todos'; label: string; icon: string }[] = [
-    { id: 'todos', label: 'Todos', icon: '🍪' },
-    { id: 'panes', label: 'Panes', icon: '🥖' },
-    { id: 'facturas', label: 'Facturas', icon: '🥐' },
-    { id: 'pasteleria', label: 'Repostería', icon: '🍰' },
-    { id: 'salados', label: 'Salados', icon: '🥪' },
-    { id: 'bebidas', label: 'Bebidas', icon: '☕' }
-  ];
-
   return (
     <div className="flex flex-col lg:flex-row gap-6 min-h-[calc(100vh-140px)] transition-all duration-300">
       
       {/* LEFT COLUMN: VISUAL POS GRILL (Big buttons McDonald's style) */}
-      <div className="flex-1 bg-white dark:bg-zinc-900 border border-orange-100 dark:border-zinc-800 rounded-2xl p-5 shadow-xs flex flex-col gap-4">
+      <div className="hidden lg:flex flex-1 bg-white dark:bg-zinc-900 border border-orange-100 dark:border-zinc-800 rounded-2xl p-5 shadow-xs flex flex-col gap-4">
         
         {/* Category filters (Big scrollable pills) */}
         <div className="flex items-center justify-between border-b pb-3 border-gray-100 dark:border-zinc-800 flex-wrap gap-2">
@@ -354,7 +611,25 @@ export const POSView: React.FC = () => {
             <ShoppingCart className="h-5 w-5 text-amber-500" />
             <h2 className="font-extrabold text-gray-800 dark:text-zinc-100 text-base">Nueva Venta</h2>
           </div>
-          <span className="text-xs bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-400 font-bold px-2.5 py-1 rounded-full">
+          
+          {/* Lupa button in the middle, respecting design guidelines */}
+          <button
+            id="btn-trigger-search-modal"
+            onClick={() => {
+              setModalOpenedFromFloating(false);
+              setModalSelectedCategory(null);
+              setSearchQuery('');
+              setShowSelectionModal(true);
+              playBeep(705, 0.05);
+            }}
+            className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-amber-200 dark:border-zinc-850 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-300 font-extrabold text-xs flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-xs"
+            title="Seleccionar Panificados"
+          >
+            <Search className="h-4 w-4" />
+            <span className="hidden sm:inline">Buscar</span>
+          </button>
+
+          <span className="text-xs bg-amber-100 dark:bg-amber-950/40 text-amber-805 dark:text-amber-400 font-bold px-2.5 py-1 rounded-full whitespace-nowrap">
             Nº Comp: Auto-Gen
           </span>
         </div>
@@ -668,6 +943,238 @@ export const POSView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* SELECTION MODAL: 🥖 Selección de Panificados */}
+      {showSelectionModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl border border-gray-150 dark:border-zinc-800 max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+            
+            {/* Header */}
+            <div className="p-4 border-b border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-950 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl" role="img" aria-label="bread">🥖</span>
+                <div>
+                  <h3 className="font-extrabold text-base text-gray-850 dark:text-zinc-50">Selección de Panificados</h3>
+                  <p className="text-[10px] text-gray-400">Escoge productos para añadir al ticket de venta</p>
+                </div>
+              </div>
+              <button
+                id="btn-close-selection-modal"
+                onClick={() => setShowSelectionModal(false)}
+                className="p-1.5 rounded-xl bg-gray-100 dark:bg-zinc-800 text-gray-500 hover:text-gray-700 dark:hover:text-zinc-200 cursor-pointer transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Persistence search & scanner simulation inside modal */}
+            <div className="p-4 bg-white dark:bg-zinc-900 border-b border-gray-100 dark:border-zinc-850 flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <input
+                  id="modal-pos-search"
+                  type="text"
+                  placeholder="Buscar por nombre o cod..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full text-xs bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl py-3 pl-10 pr-3 focus:outline-none focus:ring-1 focus:ring-amber-500 text-gray-800 dark:text-zinc-100 font-semibold"
+                  autoFocus
+                />
+                <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-gray-400" />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 font-bold"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              <button
+                id="btn-modal-scan-trigger"
+                onClick={startBarcodeScanSimulation}
+                disabled={isScanning}
+                className={`px-4 py-3 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all cursor-pointer select-none ${
+                  isScanning
+                    ? 'bg-amber-100 text-amber-700 animate-pulse border-amber-300'
+                    : 'bg-zinc-950 dark:bg-zinc-100 dark:text-zinc-900 text-white hover:opacity-90 border-transparent shadow-xs'
+                }`}
+              >
+                <ScanBarcode className="h-4 w-4" />
+                <span>{isScanning ? 'Escaneando...' : 'Escanear (Sim)'}</span>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-4 bg-amber-50/10 dark:bg-zinc-950/20">
+              
+              {/* Scenario A: Showing Search query results instantly across all categories */}
+              {searchQuery ? (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Resultados de Búsqueda ({filteredProducts.length})</span>
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="text-[10px] text-amber-600 dark:text-amber-400 font-bold hover:underline cursor-pointer"
+                    >
+                      Limpiar filtro
+                    </button>
+                  </div>
+                  {renderProductList(filteredProducts)}
+                </div>
+              ) : modalSelectedCategory === null ? (
+                /* Scenario B: Showing Categories list as beautiful visual CARDS */
+                <div>
+                  <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-3">Filtrar por Categoría</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {categoriesList.map(cat => {
+                      const count = cat.id === 'todos' 
+                        ? products.length 
+                        : products.filter(p => p.category === cat.id).length;
+
+                      return (
+                        <button
+                          key={cat.id}
+                          id={`btn-modal-cat-card-${cat.id}`}
+                          onClick={() => {
+                            setModalSelectedCategory(cat.id);
+                            playBeep(800, 0.05);
+                          }}
+                          className="p-5 rounded-3xl border bg-white dark:bg-zinc-900 border-gray-150 dark:border-zinc-800 hover:border-amber-400 dark:hover:border-amber-500 text-left flex flex-col justify-between h-32 cursor-pointer transition-all duration-305 transform hover:-translate-y-1 active:scale-97 hover:shadow-md group shadow-xs"
+                        >
+                          <div className="flex justify-between items-start w-full">
+                            <span className="text-3xl filter drop-shadow-xs transition-transform group-hover:scale-110" role="img" aria-label={cat.label}>
+                              {cat.icon}
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-extrabold bg-gray-100 dark:bg-zinc-800 text-gray-500 text-right">
+                              {count}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-extrabold text-sm text-gray-850 dark:text-zinc-100 capitalize">{cat.label}</p>
+                            <p className="text-[10px] text-gray-400 font-medium leading-none mt-0.5">Explorar menú →</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                /* Scenario C: Showing Products in selected category */
+                <div>
+                  
+                  {/* Category Path Header & Sorting */}
+                  <div className="flex flex-col gap-2 pb-3 border-b border-gray-150 dark:border-zinc-800 mb-3">
+                    <div className="flex items-center justify-between">
+                      {!modalOpenedFromFloating && (
+                        <button
+                          onClick={() => {
+                            setModalSelectedCategory(null);
+                            playBeep(600, 0.05);
+                          }}
+                          className="text-xs font-extrabold text-amber-600 dark:text-amber-500 hover:text-amber-700 bg-amber-50 dark:bg-zinc-900 border border-amber-200 dark:border-zinc-800 px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 transition-colors"
+                        >
+                          ← Volver a Categorías
+                        </button>
+                      )}
+                      <span className="text-xs font-black text-gray-800 dark:text-zinc-50 capitalize bg-gray-100 dark:bg-zinc-800 px-3 py-1 rounded-lg">
+                        {modalOpenedFromFloating ? 'Menú de Productos Completo' : `Categoría: ${modalSelectedCategory}`}
+                      </span>
+                    </div>
+
+                    {/* Columns or Filters bar for "Todos" or category items sorting */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 bg-gray-50 dark:bg-zinc-950 p-2 rounded-xl border border-gray-150 dark:border-zinc-850 mt-1 select-none">
+                      <span className="text-[10px] font-bold text-gray-550 uppercase tracking-wider">Ordenar productos:</span>
+                      <div className="flex items-center gap-1">
+                        {[
+                          { id: 'monto', label: '💵 Precio' },
+                          { id: 'orden', label: '🔤 Nombre' },
+                          { id: 'fecha_elaboracion', label: '📅 Elaboración' }
+                        ].map(col => {
+                          const isSorted = modalSortKey === col.id;
+                          return (
+                            <button
+                              key={col.id}
+                              onClick={() => {
+                                if (isSorted) {
+                                  setModalSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                                } else {
+                                  setModalSortKey(col.id as any);
+                                  setModalSortOrder('asc');
+                                }
+                                playBeep(900, 0.05);
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold border transition-all cursor-pointer ${
+                                isSorted
+                                  ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                                  : 'bg-white dark:bg-zinc-900 text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 border-gray-200 dark:border-zinc-800'
+                              }`}
+                            >
+                              {col.label} {isSorted && (modalSortOrder === 'asc' ? '▲' : '▼')}
+                            </button>
+                          );
+                        })}
+                        {modalSortKey && (
+                          <button
+                            onClick={() => {
+                              setModalSortKey(null);
+                              setModalSortOrder('asc');
+                            }}
+                            className="text-[10px] font-bold text-red-500 px-1.5 hover:underline cursor-pointer"
+                            title="Quitar orden"
+                          >
+                            Limpiar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Render list of products within selected category */}
+                  {renderProductList(getSortedModalProducts())}
+                </div>
+              )}
+
+            </div>
+
+            {/* Quick checkout summary footer inside the selection modal */}
+            <div className="p-4 border-t border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-950 flex items-center justify-between">
+              <div className="text-left font-sans">
+                <p className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider leading-none">Elementos en ticket</p>
+                <p className="text-sm font-extrabold text-gray-800 dark:text-zinc-100 mt-1 leading-none">
+                  {cart.reduce((s, c) => s + c.quantity, 0)} unidades / <span className="text-amber-600 dark:text-amber-500 font-black">${cartTotal.toFixed(2)}</span>
+                </p>
+              </div>
+              
+              <button
+                id="btn-selection-modal-done"
+                onClick={() => setShowSelectionModal(false)}
+                className="py-2.5 px-5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-black shadow-md cursor-pointer transition-all hover:-translate-y-0.5 active:scale-95"
+              >
+                Cerrar y Ver Ticket
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* FLOATING ACTION LUPA BUTTON FOR BOTH VIEWS */}
+      <button
+        id="btn-floating-lupa-search"
+        onClick={() => {
+          setModalOpenedFromFloating(true);
+          setModalSelectedCategory('todos');
+          setSearchQuery('');
+          setShowSelectionModal(true);
+          playBeep(705, 0.05);
+        }}
+        className="fixed bottom-6 right-6 lg:bottom-8 lg:right-8 z-40 p-4 rounded-full bg-amber-500 hover:bg-amber-600 text-white shadow-2xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer border-2 border-white dark:border-zinc-800 ring-4 ring-amber-550/10 dark:ring-zinc-900 group"
+        title="Buscar Panificados (Modo Lista)"
+      >
+        <Search className="h-6 w-6 group-hover:rotate-12 transition-transform duration-300" />
+      </button>
 
     </div>
   );

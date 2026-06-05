@@ -25,6 +25,8 @@ export interface Product {
   image: string; // Emoji or Lucide icon key
   code: string; // Barcode simulation
   ingredients: ProductIngredient[];
+  elaborationDate?: string; // YYYY-MM-DD format
+  durabilityDays?: number; // expiry days
 }
 
 export interface SaleItem {
@@ -86,3 +88,45 @@ export interface PaymentGateway {
   status: 'active' | 'inactive';
   chargeFee: number; // percentage fee
 }
+
+export interface ProductBatch {
+  id: string;
+  productId: string;
+  batchNumber: string;
+  quantity: number; // Initial amount in batch
+  stock: number; // Current remaining amount
+  elaborationDate: string; // YYYY-MM-DD
+  expiryDate: string; // YYYY-MM-DD
+  status: 'active' | 'withdrawn' | 'sold_out';
+  withdrawalMode: 'manual' | 'automatic'; // 'manual' is default (manual predeterminado)
+}
+
+export interface BatchWithdrawalRequest {
+  id: string;
+  batchId: string;
+  productId: string;
+  productName: string;
+  batchNumber: string;
+  quantity: number;
+  reason: string;
+  requestedBy: string;
+  status: 'pending' | 'approved' | 'rejected';
+  date: string;
+  adminMemo?: string; // Details of why approved or denied ("con un detalle del porque")
+}
+
+export interface SupplyRequest {
+  id: string;
+  type: 'ingredient' | 'product';
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  reason: string;
+  requestedBy: string;
+  status: 'pending' | 'approved' | 'rejected';
+  date: string;
+  adminMemo?: string;
+}
+
+

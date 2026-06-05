@@ -27,7 +27,9 @@ export const INITIAL_PRODUCTS: Product[] = [
       { ingredientId: 'ing_harina', quantity: 0.25 },
       { ingredientId: 'ing_levadura', quantity: 0.01 },
       { ingredientId: 'ing_sal', quantity: 0.005 }
-    ]
+    ],
+    elaborationDate: '2026-06-05',
+    durabilityDays: 2
   },
   {
     id: 'prod_felipe',
@@ -43,7 +45,9 @@ export const INITIAL_PRODUCTS: Product[] = [
       { ingredientId: 'ing_harina', quantity: 0.05 },
       { ingredientId: 'ing_levadura', quantity: 0.002 },
       { ingredientId: 'ing_sal', quantity: 0.001 }
-    ]
+    ],
+    elaborationDate: '2026-06-05',
+    durabilityDays: 1
   },
   {
     id: 'prod_medialuna_manteca',
@@ -60,7 +64,9 @@ export const INITIAL_PRODUCTS: Product[] = [
       { ingredientId: 'ing_manteca', quantity: 0.02 },
       { ingredientId: 'ing_azucar', quantity: 0.01 },
       { ingredientId: 'ing_levadura', quantity: 0.001 }
-    ]
+    ],
+    elaborationDate: '2026-06-04',
+    durabilityDays: 2
   },
   {
     id: 'prod_vigilante',
@@ -77,7 +83,9 @@ export const INITIAL_PRODUCTS: Product[] = [
       { ingredientId: 'ing_manteca', quantity: 0.015 },
       { ingredientId: 'ing_azucar', quantity: 0.012 },
       { ingredientId: 'ing_levadura', quantity: 0.001 }
-    ]
+    ],
+    elaborationDate: '2026-06-05',
+    durabilityDays: 2
   },
   {
     id: 'prod_torta_frutilla',
@@ -95,7 +103,9 @@ export const INITIAL_PRODUCTS: Product[] = [
       { ingredientId: 'ing_huevos', quantity: 4 },
       { ingredientId: 'ing_azucar', quantity: 0.2 },
       { ingredientId: 'ing_leche', quantity: 0.25 }
-    ]
+    ],
+    elaborationDate: '2026-06-03',
+    durabilityDays: 3
   },
   {
     id: 'prod_budin_repostero',
@@ -113,7 +123,9 @@ export const INITIAL_PRODUCTS: Product[] = [
       { ingredientId: 'ing_huevos', quantity: 3 },
       { ingredientId: 'ing_azucar', quantity: 0.15 },
       { ingredientId: 'ing_manteca', quantity: 0.1 }
-    ]
+    ],
+    elaborationDate: '2026-06-01',
+    durabilityDays: 5
   },
   {
     id: 'prod_sand_miga',
@@ -128,7 +140,9 @@ export const INITIAL_PRODUCTS: Product[] = [
     ingredients: [
       { ingredientId: 'ing_harina', quantity: 0.15 },
       { ingredientId: 'ing_manteca', quantity: 0.02 }
-    ]
+    ],
+    elaborationDate: '2026-06-05',
+    durabilityDays: 1
   },
   {
     id: 'prod_cafe',
@@ -140,7 +154,9 @@ export const INITIAL_PRODUCTS: Product[] = [
     minStock: 20,
     image: '☕',
     code: '7791234560080',
-    ingredients: []
+    ingredients: [],
+    elaborationDate: '2026-06-05',
+    durabilityDays: 30
   },
   {
     id: 'prod_jugo',
@@ -152,7 +168,9 @@ export const INITIAL_PRODUCTS: Product[] = [
     minStock: 15,
     image: '🍊',
     code: '7791234560097',
-    ingredients: []
+    ingredients: [],
+    elaborationDate: '2026-06-05',
+    durabilityDays: 1
   }
 ];
 

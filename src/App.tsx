@@ -7,6 +7,8 @@ import { InventoryView } from './components/InventoryView';
 import { SalesHistoryView } from './components/SalesHistoryView';
 import { AccountingView } from './components/AccountingView';
 import { IntegrationsView } from './components/IntegrationsView';
+import { CajeroMermaView } from './components/CajeroMermaView';
+import { PanaderoSupplyView } from './components/PanaderoSupplyView';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -39,19 +41,46 @@ function ERPLayout() {
         return <AccountingView />;
       case 'integrations':
         return <IntegrationsView />;
+      case 'merma_requests':
+        return <CajeroMermaView />;
+      case 'supply_requests':
+        return <PanaderoSupplyView />;
       default:
+        // Safe fallback if tab is not in list for this role
+        if (activeUser.role === 'cajero') return <POSView />;
+        if (activeUser.role === 'panadero') return <InventoryView />;
         return <Dashboard />;
     }
   };
 
-  const navItems = [
-    { id: 'dashboard', label: 'Tablero Analítico', icon: <LayoutDashboard className="h-4.5 w-4.5" /> },
-    { id: 'pos', label: 'Nueva Venta (POS)', icon: <ShoppingCart className="h-4.5 w-4.5" /> },
-    { id: 'inventory', label: 'Materia e Insumos', icon: <Package className="h-4.5 w-4.5" /> },
-    { id: 'history', label: 'Historial de Caja', icon: <ReceiptText className="h-4.5 w-4.5" /> },
-    { id: 'accounting', label: 'Egresos y Balance', icon: <HandCoins className="h-4.5 w-4.5" /> },
-    { id: 'integrations', label: 'Pasarelas de Pago', icon: <Globe className="h-4.5 w-4.5" /> }
-  ];
+  const getNavItemsByRole = () => {
+    const role = activeUser?.role || 'admin';
+    switch (role) {
+      case 'cajero':
+        return [
+          { id: 'pos', label: 'Nueva Venta (POS)', icon: <ShoppingCart className="h-4.5 w-4.5" /> },
+          { id: 'history', label: 'Historial de Caja', icon: <ReceiptText className="h-4.5 w-4.5" /> },
+          { id: 'merma_requests', label: 'Solicitar Merma (Bajas)', icon: <X className="h-4.5 w-4.5 text-red-500 font-bold" /> }
+        ];
+      case 'panadero':
+        return [
+          { id: 'inventory', label: 'Inventario y Silos', icon: <Package className="h-4.5 w-4.5" /> },
+          { id: 'supply_requests', label: 'Pedidos / Traslados', icon: <TrendingUp className="h-4.5 w-4.5 text-emerald-500 font-bold" /> }
+        ];
+      case 'admin':
+      default:
+        return [
+          { id: 'dashboard', label: 'Tablero Analítico', icon: <LayoutDashboard className="h-4.5 w-4.5" /> },
+          { id: 'pos', label: 'Nueva Venta (POS)', icon: <ShoppingCart className="h-4.5 w-4.5" /> },
+          { id: 'inventory', label: 'Materia e Insumos', icon: <Package className="h-4.5 w-4.5" /> },
+          { id: 'history', label: 'Historial de Caja', icon: <ReceiptText className="h-4.5 w-4.5" /> },
+          { id: 'accounting', label: 'Egresos y Balance', icon: <HandCoins className="h-4.5 w-4.5" /> },
+          { id: 'integrations', label: 'Pasarelas de Pago', icon: <Globe className="h-4.5 w-4.5" /> }
+        ];
+    }
+  };
+
+  const navItems = getNavItemsByRole();
 
   // Render differently based on emulate layout mode
   if (deviceMode === 'Tablet') {
