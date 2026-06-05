@@ -1,0 +1,6 @@
+{
+  "name": "ERP Panadería",
+  "description": "Un ERP completo y optimizado para la gestión integral de inventarios, ventas rápidas en tablet o celular, contabilidad y analíticas en tiempo real para panaderías.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

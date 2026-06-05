@@ -1,0 +1,88 @@
+export type CategoryType = 'panes' | 'facturas' | 'pasteleria' | 'bebidas' | 'salados';
+
+export interface Ingredient {
+  id: string;
+  name: string;
+  stock: number; // in kg/L/units
+  unit: 'kg' | 'g' | 'L' | 'ml' | 'unidades';
+  minStock: number;
+  unitCost: number; // Cost per unit
+}
+
+export interface ProductIngredient {
+  ingredientId: string;
+  quantity: number; // Quantity needed per product unit (e.g., 0.05 kg of harina for a bread load)
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  category: CategoryType;
+  price: number;
+  cost: number;
+  stock: number;
+  minStock: number;
+  image: string; // Emoji or Lucide icon key
+  code: string; // Barcode simulation
+  ingredients: ProductIngredient[];
+}
+
+export interface SaleItem {
+  productId: string;
+  name: string;
+  quantity: number;
+  price: number;
+  subtotal: number;
+}
+
+export interface Sale {
+  id: string;
+  invoiceNumber: string;
+  date: string;
+  items: SaleItem[];
+  total: number;
+  tax: number; // e.g. IVA 21% or 10.5%
+  paymentMethod: 'efectivo' | 'tarjeta' | 'mercado_pago' | 'paypal';
+  paymentStatus: 'completed' | 'failed' | 'pending';
+  operatorRole: string;
+  operatorName: string;
+  customerName?: string;
+  customerDoc?: string;
+}
+
+export interface Expense {
+  id: string;
+  concept: string;
+  category: 'materia_prima' | 'servicios' | 'alquiler' | 'salarios' | 'otros';
+  amount: number;
+  date: string;
+  paymentMethod: string;
+  invoiceUrl?: string;
+}
+
+export type UserRole = 'admin' | 'cajero' | 'panadero';
+
+export interface User {
+  id: string;
+  name: string;
+  role: UserRole;
+  avatar: string;
+  customPanels: string[]; // customizable panel card keys
+}
+
+export interface PushNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'error' | 'warning' | 'info' | 'success';
+  timestamp: string;
+  read: boolean;
+}
+
+export interface PaymentGateway {
+  id: string;
+  name: string;
+  logo: string;
+  status: 'active' | 'inactive';
+  chargeFee: number; // percentage fee
+}
