@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AppProvider, useApp } from './AppContext';
 import { MainHeadLayout } from './components/MainHeadLayout';
 import { Dashboard } from './components/Dashboard';
@@ -9,6 +9,7 @@ import { AccountingView } from './components/AccountingView';
 import { IntegrationsView } from './components/IntegrationsView';
 import { CajeroMermaView } from './components/CajeroMermaView';
 import { PanaderoSupplyView } from './components/PanaderoSupplyView';
+import { CashSessionView } from './components/CashSessionView';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -16,15 +17,15 @@ import {
   ReceiptText,
   HandCoins,
   Globe,
-  Settings,
   X,
-  CreditCard,
   TrendingUp,
-  Settings2
+  Wallet,
+  Menu
 } from 'lucide-react';
 
 function ERPLayout() {
-  const { deviceMode, activeTab, setActiveTab, activeUser, darkMode } = useApp();
+  const { deviceMode, activeTab, setActiveTab, activeUser } = useApp();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Helper trigger to switch visual component frames
   const renderActiveView = () => {
@@ -33,6 +34,8 @@ function ERPLayout() {
         return <Dashboard />;
       case 'pos':
         return <POSView />;
+      case 'caja':
+        return <CashSessionView />;
       case 'inventory':
         return <InventoryView />;
       case 'history':
@@ -59,6 +62,7 @@ function ERPLayout() {
       case 'cajero':
         return [
           { id: 'pos', label: 'Nueva Venta (POS)', icon: <ShoppingCart className="h-4.5 w-4.5" /> },
+          { id: 'caja', label: 'Apertura y Cierre de Caja', icon: <Wallet className="h-4.5 w-4.5" /> },
           { id: 'history', label: 'Historial de Caja', icon: <ReceiptText className="h-4.5 w-4.5" /> },
           { id: 'merma_requests', label: 'Solicitar Merma (Bajas)', icon: <X className="h-4.5 w-4.5 text-red-500 font-bold" /> }
         ];
@@ -72,6 +76,7 @@ function ERPLayout() {
         return [
           { id: 'dashboard', label: 'Tablero Analítico', icon: <LayoutDashboard className="h-4.5 w-4.5" /> },
           { id: 'pos', label: 'Nueva Venta (POS)', icon: <ShoppingCart className="h-4.5 w-4.5" /> },
+          { id: 'caja', label: 'Acciones de Caja 🏦', icon: <Wallet className="h-4.5 w-4.5" /> },
           { id: 'inventory', label: 'Materia e Insumos', icon: <Package className="h-4.5 w-4.5" /> },
           { id: 'history', label: 'Historial de Caja', icon: <ReceiptText className="h-4.5 w-4.5" /> },
           { id: 'accounting', label: 'Egresos y Balance', icon: <HandCoins className="h-4.5 w-4.5" /> },
@@ -82,95 +87,110 @@ function ERPLayout() {
 
   const navItems = getNavItemsByRole();
 
-  // Render differently based on emulate layout mode
-  if (deviceMode === 'Tablet') {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-zinc-950 flex flex-col font-sans transition-colors duration-300">
-        <MainHeadLayout />
-        
-        {/* Streamlined Mobile view displays POS directly as a high-density Touchscreen teller terminal */}
-        <main className="flex-1 p-4 max-w-7xl mx-auto w-full">
-          <div className="mb-4 bg-orange-500 text-white rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-2 shadow-xs border-b border-orange-700">
-            <div className="flex items-center gap-2">
-              <span className="text-xl" role="img" aria-label="croissant">🥐</span>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wider">Modo Mesa de Pedidos Directa (Tablet/Móvil)</p>
-                <p className="text-xs text-orange-100 mt-0.5">Optimizado para interacciones táctiles táctiles con hitboxes de gran tamaño.</p>
-              </div>
-            </div>
-            <button
-              id="btn-return-pc"
-              onClick={() => setActiveTab('dashboard')}
-              className="text-xs font-extrabold bg-white hover:bg-orange-50 text-orange-650 px-3 py-1.5 rounded-lg border border-transparent shadow-xs cursor-pointer transition-colors"
-            >
-              Cámara Administración Full (Ver PC) →
-            </button>
-          </div>
-          
-          <POSView />
-        </main>
-      </div>
-    );
-  }
-
+  // Render unified responsive layout
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-zinc-950 flex flex-col font-sans transition-colors duration-300">
+    <div className="min-h-screen bg-gray-55 dark:bg-zinc-950 flex flex-col font-sans transition-colors duration-300">
       <MainHeadLayout />
 
-      <div className="flex-1 flex flex-col md:flex-row max-w-7xl mx-auto w-full p-4 lg:p-6 gap-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 lg:p-6 flex flex-col gap-5">
         
-        {/* Left Side Navigation menu for PC Office session */}
-        <aside className="w-full md:w-64 bg-white dark:bg-zinc-900 border border-orange-100/40 dark:border-zinc-800 rounded-2xl p-4 flex flex-col justify-between h-fit gap-6 shadow-xs h-[calc(100vh-140px)] sticky top-6">
-          <div className="space-y-4">
-            <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest px-3 leading-none select-none">
-              Módulos Operativos
-            </p>
-            <nav className="space-y-1 select-none">
+        {/* DESKTOP/PC HORIZONTAL NAVBAR (unhidden starting at medium screens) */}
+        <nav className="hidden md:flex items-center justify-between gap-4 py-2 px-3 border border-orange-100/40 dark:border-zinc-805 bg-white dark:bg-zinc-900 rounded-2xl shadow-xs select-none">
+          <div className="flex items-center gap-2 flex-wrap">
+            {navItems.map(item => {
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  id={`btn-nav-tab-${item.id}`}
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`flex items-center gap-2.5 px-4 py-3 text-xs font-extrabold rounded-xl transition-all duration-200 cursor-pointer ${
+                    isActive
+                      ? 'bg-amber-500 text-white shadow-sm scale-[1.02]'
+                      : 'text-gray-550 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 hover:bg-gray-100/60 dark:hover:bg-zinc-800/40'
+                  }`}
+                >
+                  <span className={isActive ? 'text-white' : 'text-amber-500 dark:text-amber-450'}>
+                    {item.icon}
+                  </span>
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Connected session indicator directly inside navbar */}
+          <div className="flex items-center gap-2 text-xs py-2 px-3 bg-amber-500/5 dark:bg-amber-950/10 border border-amber-500/10 dark:border-zinc-800 rounded-xl">
+            <span className="text-[10px] font-black text-amber-600 dark:text-amber-450 uppercase tracking-wider">Turno Asignado:</span>
+            <span className="font-bold text-gray-700 dark:text-zinc-300 truncate max-w-[140px]">{activeUser.name.split(' ')[0]}</span>
+            <span className="text-[8.5px] bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-md uppercase font-black tracking-wider">{activeUser.role}</span>
+          </div>
+        </nav>
+
+        {/* MOBILE/CELU DROPDOWN HEADER BAR (visible only on mobile) */}
+        <div className="md:hidden bg-white dark:bg-zinc-900 border border-orange-100/30 dark:border-zinc-800 p-3.5 rounded-2xl shadow-xs flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 bg-amber-500/10 text-amber-500 rounded-xl">
+                {navItems.find(item => item.id === activeTab)?.icon || <LayoutDashboard className="h-4.5 w-4.5" />}
+              </span>
+              <div>
+                <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest block leading-none">Módulo Activo</span>
+                <span className="text-xs font-black text-gray-800 dark:text-zinc-50">
+                  {navItems.find(item => item.id === activeTab)?.label || 'Menú de Operaciones'}
+                </span>
+              </div>
+            </div>
+
+            <button
+              id="btn-hamburger-toggle"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="p-2 bg-gray-50 hover:bg-gray-100 dark:bg-zinc-950 dark:hover:bg-zinc-800 border border-gray-200/50 dark:border-zinc-800 rounded-xl text-gray-655 dark:text-zinc-300 cursor-pointer flex items-center justify-center gap-1.5 transition-all active:scale-95"
+            >
+              <Menu className="h-4 w-4 text-amber-550" />
+              <span className="text-[10px] font-black uppercase pr-1">Módulos</span>
+            </button>
+          </div>
+
+          {/* List display matching desktop options when hamburger is clicked */}
+          {isMobileMenuOpen && (
+            <div className="border-t border-gray-100 dark:border-zinc-800 pt-3.5 mt-1 grid grid-cols-1 sm:grid-cols-2 gap-1.5 animate-fade-in select-none">
               {navItems.map(item => {
                 const isActive = activeTab === item.id;
                 return (
                   <button
                     key={item.id}
-                    id={`btn-nav-tab-${item.id}`}
-                    onClick={() => setActiveTab(item.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-3 text-xs font-extrabold rounded-xl transition-all duration-200 cursor-pointer ${
+                    id={`btn-mobile-nav-${item.id}`}
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={`flex items-center gap-3 px-3.5 py-3 text-xs font-extrabold rounded-xl text-left transition-all cursor-pointer ${
                       isActive
-                        ? 'bg-amber-500 text-white shadow-md shadow-amber-500/10 scale-[1.02]'
-                        : 'text-gray-655 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-gray-100/60 dark:hover:bg-zinc-800/50'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : 'text-gray-655 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-950/50'
                     }`}
                   >
-                    <div className={isActive ? 'text-white' : 'text-amber-500 dark:text-amber-400'}>
+                    <span className={isActive ? 'text-white' : 'text-amber-500'}>
                       {item.icon}
-                    </div>
+                    </span>
                     {item.label}
                   </button>
                 );
               })}
-            </nav>
-          </div>
+            </div>
+          )}
+        </div>
 
-          {/* Quick operators statistics overview at footer */}
-          <div className="bg-amber-50/40 dark:bg-amber-950/15 p-3 rounded-xl border border-amber-250/20 select-none">
-            <p className="text-[9px] font-extrabold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-1">
-              Sesión Iniciada por:
-            </p>
-            <p className="text-xs font-bold text-gray-805 dark:text-zinc-200 truncate">
-              {activeUser.name}
-            </p>
-            <p className="text-[9px] text-gray-405 mt-0.5 leading-none">
-              Permisos de Nivel: {activeUser.role.toUpperCase()}
-            </p>
-          </div>
-        </aside>
-
-        {/* Right Middle main frame dashboard */}
-        <section className="flex-1 min-w-0">
-          <div className="bg-white dark:bg-zinc-900 border border-orange-100/35 dark:border-zinc-850 rounded-3xl p-5 md:p-6 shadow-xs min-h-[calc(100vh-140px)] transition-all duration-300">
-            {renderActiveView()}
-          </div>
+        {/* Dynamic subview display */}
+        <section className="bg-white dark:bg-zinc-900 border border-orange-100/30 dark:border-zinc-850 rounded-3xl p-4 md:p-6 shadow-xs min-h-[520px] transition-all duration-350">
+          {renderActiveView()}
         </section>
 
-      </div>
+      </main>
     </div>
   );
 }

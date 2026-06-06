@@ -129,4 +129,18 @@ export interface SupplyRequest {
   adminMemo?: string;
 }
 
+export interface CashSession {
+  id: string;
+  openedAt: string;
+  closedAt?: string;
+  openedBy: string;
+  closedBy?: string;
+  initialAmount: number;
+  expectedAmount: number; // initialAmount + cash sales
+  realAmount?: number; // amount declared in counted cash
+  discrepancy?: number; // realAmount - expectedAmount
+  note?: string;
+  status: 'open' | 'closed';
+}
+
 

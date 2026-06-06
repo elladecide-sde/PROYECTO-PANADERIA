@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Ingredient, Product, Sale, Expense, User, PushNotification, PaymentGateway, UserRole, ProductBatch, BatchWithdrawalRequest, SupplyRequest } from './types';
+import { Ingredient, Product, Sale, Expense, User, PushNotification, PaymentGateway, UserRole, ProductBatch, BatchWithdrawalRequest, SupplyRequest, CashSession } from './types';
 import {
   INITIAL_INGREDIENTS,
   INITIAL_PRODUCTS,
@@ -25,6 +25,8 @@ interface AppContextType {
   batches: ProductBatch[];
   withdrawalRequests: BatchWithdrawalRequest[];
   supplyRequests: SupplyRequest[];
+  currentCashSession: CashSession | null;
+  cashSessionsHistory: CashSession[];
   
   // State setter wraps
   setActiveUserRole: (role: UserRole) => void;
@@ -57,6 +59,10 @@ interface AppContextType {
   requestSupply: (type: 'ingredient' | 'product', itemId: string, quantity: number, reason: string) => void;
   approveSupplyRequest: (requestId: string, adminMemo: string) => void;
   rejectSupplyRequest: (requestId: string, adminMemo: string) => void;
+
+  // Cash Session Actions
+  openCashSession: (initialAmount: number, note?: string) => void;
+  closeCashSession: (realAmount: number, note?: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -69,46 +75,58 @@ export const useApp = () => {
   return context;
 };
 
+const safeParse = <T,>(key: string, fallback: T): T => {
+  try {
+    const saved = localStorage.getItem(key);
+    if (!saved) return fallback;
+    const parsed = JSON.parse(saved);
+    if (parsed === null || parsed === undefined) return fallback;
+    return parsed as T;
+  } catch (e) {
+    console.error(`Error parsing localStorage key "${key}":`, e);
+    localStorage.removeItem(key);
+    return fallback;
+  }
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Initialize state from local storage or defaults
-  const [ingredients, setIngredients] = useState<Ingredient[]>(() => {
-    const saved = localStorage.getItem('pan_erp_ingredients');
-    return saved ? JSON.parse(saved) : INITIAL_INGREDIENTS;
-  });
+  const [ingredients, setIngredients] = useState<Ingredient[]>(() => 
+    safeParse('pan_erp_ingredients', INITIAL_INGREDIENTS)
+  );
 
-  const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem('pan_erp_products');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-  });
+  const [products, setProducts] = useState<Product[]>(() => 
+    safeParse('pan_erp_products', INITIAL_PRODUCTS)
+  );
 
-  const [sales, setSales] = useState<Sale[]>(() => {
-    const saved = localStorage.getItem('pan_erp_sales');
-    return saved ? JSON.parse(saved) : INITIAL_SALES;
-  });
+  const [sales, setSales] = useState<Sale[]>(() => 
+    safeParse('pan_erp_sales', INITIAL_SALES)
+  );
 
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const saved = localStorage.getItem('pan_erp_expenses');
-    return saved ? JSON.parse(saved) : INITIAL_EXPENSES;
-  });
+  const [expenses, setExpenses] = useState<Expense[]>(() => 
+    safeParse('pan_erp_expenses', INITIAL_EXPENSES)
+  );
 
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('pan_erp_users');
-    return saved ? JSON.parse(saved) : USERS;
-  });
+  const [users, setUsers] = useState<User[]>(() => 
+    safeParse('pan_erp_users', USERS)
+  );
 
-  const [notifications, setNotifications] = useState<PushNotification[]>(() => {
-    const saved = localStorage.getItem('pan_erp_notifications');
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
-  });
+  const [notifications, setNotifications] = useState<PushNotification[]>(() => 
+    safeParse('pan_erp_notifications', INITIAL_NOTIFICATIONS)
+  );
 
-  const [gateways, setGateways] = useState<PaymentGateway[]>(() => {
-    const saved = localStorage.getItem('pan_erp_gateways');
-    return saved ? JSON.parse(saved) : PAYMENT_GATEWAYS;
-  });
+  const [gateways, setGateways] = useState<PaymentGateway[]>(() => 
+    safeParse('pan_erp_gateways', PAYMENT_GATEWAYS)
+  );
 
   const [batches, setBatches] = useState<ProductBatch[]>(() => {
-    const saved = localStorage.getItem('pan_erp_batches');
-    if (saved) return JSON.parse(saved);
+    try {
+      const saved = localStorage.getItem('pan_erp_batches');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Error parsing batches from localStorage:', e);
+      localStorage.removeItem('pan_erp_batches');
+    }
     
     const initialBatches: ProductBatch[] = [];
     
@@ -181,8 +199,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [withdrawalRequests, setWithdrawalRequests] = useState<BatchWithdrawalRequest[]>(() => {
-    const saved = localStorage.getItem('pan_erp_withdrawal_requests');
-    if (saved) return JSON.parse(saved);
+    try {
+      const saved = localStorage.getItem('pan_erp_withdrawal_requests');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Error parsing withdrawal requests:', e);
+      localStorage.removeItem('pan_erp_withdrawal_requests');
+    }
     
     return [
       {
@@ -214,8 +237,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [supplyRequests, setSupplyRequests] = useState<SupplyRequest[]>(() => {
-    const saved = localStorage.getItem('pan_erp_supply_requests');
-    if (saved) return JSON.parse(saved);
+    try {
+      const saved = localStorage.getItem('pan_erp_supply_requests');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Error parsing supply requests:', e);
+      localStorage.removeItem('pan_erp_supply_requests');
+    }
     
     return [
       {
@@ -247,6 +275,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [activeUserId, setActiveUserId] = useState<string>(() => {
     return localStorage.getItem('pan_erp_active_user_id') || 'user_admin';
+  });
+
+  const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(() => {
+    try {
+      const saved = localStorage.getItem('pan_erp_current_cash_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      console.error('Error parsing current cash session from localStorage:', e);
+      localStorage.removeItem('pan_erp_current_cash_session');
+      return null;
+    }
+  });
+
+  const [cashSessionsHistory, setCashSessionsHistory] = useState<CashSession[]>(() => {
+    try {
+      const saved = localStorage.getItem('pan_erp_cash_sessions_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Error parsing cash sessions history from localStorage:', e);
+      localStorage.removeItem('pan_erp_cash_sessions_history');
+      return [];
+    }
   });
 
   const [deviceMode, setDeviceMode] = useState<'PC' | 'Tablet'>(() => {
@@ -352,6 +402,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [gateways]);
 
   useEffect(() => {
+    if (currentCashSession) {
+      localStorage.setItem('pan_erp_current_cash_session', JSON.stringify(currentCashSession));
+    } else {
+      localStorage.removeItem('pan_erp_current_cash_session');
+    }
+  }, [currentCashSession]);
+
+  useEffect(() => {
+    localStorage.setItem('pan_erp_cash_sessions_history', JSON.stringify(cashSessionsHistory));
+  }, [cashSessionsHistory]);
+
+  useEffect(() => {
     localStorage.setItem('pan_erp_active_user_id', activeUserId);
   }, [activeUserId]);
 
@@ -369,7 +431,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [darkMode]);
 
   // Derive active user
-  const activeUser = users.find(u => u.id === activeUserId) || users[0];
+  const activeUser = (users && users.length > 0)
+    ? (users.find(u => u.id === activeUserId) || users[0])
+    : USERS[0];
 
   const setActiveUserRole = (role: UserRole) => {
     const found = users.find(u => u.role === role);
@@ -643,6 +707,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIngredients(updatedIngredients);
     setSales(prev => [newSaleInstance, ...prev]);
 
+    if (paymentMethod === 'efectivo' && currentCashSession) {
+      setCurrentCashSession(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          expectedAmount: parseFloat((prev.expectedAmount + newSaleInstance.total).toFixed(2))
+        };
+      });
+    }
+
     // Success notifications
     addSystemNotification(
       '💸 Nueva Venta Registrada',
@@ -780,6 +854,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('pan_erp_batches');
     localStorage.removeItem('pan_erp_withdrawal_requests');
     localStorage.removeItem('pan_erp_supply_requests');
+    localStorage.removeItem('pan_erp_current_cash_session');
+    localStorage.removeItem('pan_erp_cash_sessions_history');
 
     setIngredients(INITIAL_INGREDIENTS);
     setProducts(INITIAL_PRODUCTS);
@@ -794,6 +870,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveTab('dashboard');
     setBatches([]);
     setWithdrawalRequests([]);
+    setCurrentCashSession(null);
+    setCashSessionsHistory([]);
     setSupplyRequests([
       {
         id: 'sup_req_1',
@@ -1057,6 +1135,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const openCashSession = (initialAmount: number, note?: string) => {
+    const newSession: CashSession = {
+      id: `cash_ses_${Date.now()}`,
+      openedAt: new Date().toISOString(),
+      openedBy: activeUser.name,
+      initialAmount,
+      expectedAmount: initialAmount,
+      status: 'open',
+      note: note || ''
+    };
+    setCurrentCashSession(newSession);
+    addSystemNotification(
+      '🏦 Apertura de Caja',
+      `Se abrió la caja con un saldo inicial de $${initialAmount.toFixed(2)} por ${activeUser.name}.`,
+      'success'
+    );
+  };
+
+  const closeCashSession = (realAmount: number, note?: string) => {
+    if (!currentCashSession) return;
+    
+    const expected = currentCashSession.expectedAmount;
+    const discrepancy = realAmount - expected;
+    
+    const finishedSession: CashSession = {
+      ...currentCashSession,
+      closedAt: new Date().toISOString(),
+      closedBy: activeUser.name,
+      realAmount,
+      discrepancy,
+      status: 'closed',
+      note: note || currentCashSession.note
+    };
+
+    setCashSessionsHistory(prev => [finishedSession, ...prev]);
+    setCurrentCashSession(null);
+
+    addSystemNotification(
+      '🏦 Cierre de Caja',
+      `Caja cerrada. Esperado: $${expected.toFixed(2)}, Real: $${realAmount.toFixed(2)}, Discrepancia: $${discrepancy.toFixed(2)}`,
+      Math.abs(discrepancy) < 0.01 ? 'success' : 'warning'
+    );
+  };
+
   // Alias for error proofing
   const setWithdrawRequests = setWithdrawalRequests;
 
@@ -1077,6 +1199,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         batches,
         withdrawalRequests,
         supplyRequests,
+        currentCashSession,
+        cashSessionsHistory,
         setActiveUserRole,
         setDeviceMode,
         setDarkMode,
@@ -1100,7 +1224,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         rejectWithdrawalRequest,
         requestSupply,
         approveSupplyRequest,
-        rejectSupplyRequest
+        rejectSupplyRequest,
+        openCashSession,
+        closeCashSession
       }}
     >
       {children}

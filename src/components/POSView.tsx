@@ -27,7 +27,9 @@ export const POSView: React.FC = () => {
     gateways,
     activeUser,
     addSystemNotification,
-    ingredients
+    ingredients,
+    currentCashSession,
+    setActiveTab
   } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState<CategoryType | 'todos'>('todos');
@@ -51,6 +53,31 @@ export const POSView: React.FC = () => {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [simulateFailedPayment, setSimulateFailedPayment] = useState(false);
   const [processingStatusText, setProcessingStatusText] = useState('');
+
+  if (!currentCashSession) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6 max-w-md mx-auto bg-gradient-to-b from-amber-500/5 via-white to-gray-50/20 dark:from-zinc-950/20 dark:via-zinc-900/40 dark:to-zinc-950/10 border border-amber-305/30 dark:border-zinc-800 rounded-3xl shadow-sm my-8">
+        <div className="p-4 bg-amber-500/10 text-amber-550 dark:text-amber-450 rounded-full animate-pulse">
+          <CircleAlert className="w-12 h-12" />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-xl font-extrabold text-gray-805 dark:text-zinc-100 uppercase tracking-tight">
+            ⚠️ Registro de Caja Cerrado
+          </h3>
+          <p className="text-xs text-gray-450 dark:text-zinc-400 leading-relaxed font-semibold">
+            Para registrar una nueva venta (POS) y emitir facturas, es obligatorio habilitar primero el turno diario de caja declarando el saldo de cambio inicial.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setActiveTab('caja')}
+          className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-2xl cursor-pointer shadow-md shadow-amber-500/10 transition-transform active:scale-95 text-center block"
+        >
+          Habilitar Apertura de Caja 🏦
+        </button>
+      </div>
+    );
+  }
 
   const categoriesList: { id: CategoryType | 'todos'; label: string; icon: string }[] = [
     { id: 'todos', label: 'Todos', icon: '🍪' },
